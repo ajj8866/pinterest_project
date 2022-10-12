@@ -2,3 +2,4 @@ kafka_2.13-3.2.3*
 __pycache__
 User_Emulation
 *DS_Store
+json_conf.json
