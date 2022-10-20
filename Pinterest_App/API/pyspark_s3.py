@@ -1,7 +1,3 @@
-import imp
-from click import option
-from pip import main
-import py
 from pyspark.sql.types import StructField, StringType, IntegerType, StructType
 import multiprocessing
 import pyspark
@@ -21,16 +17,16 @@ from User_Emulation.user_posting_emulation import run_infinite_post_data_loop, A
 import os
 
 class PySparkIntegrations:
-    def __init__(self, s3_bucket='pinterest-data-bucket-0990123', region='us-east-1') -> None:
+    def __init__(self) -> None:
+        self.schema= StructType([StructField('category', StringType(), nullable=True), StructField('index_1', StringType(),nullable=True), StructField('unique_id', StringType(), nullable=False), 
+            StructField('title', StringType(), nullable=True), StructField('description', StringType(), nullable=True), StructField('follower_count', StringType(), nullable=True), 
+            StructField('tag_list', StringType(), nullable=True), StructField('is_image_or_video', StringType(), nullable=True), StructField('image_src', StringType(), nullable=True),StructField('downloaded', IntegerType()), StructField('save_location', StringType(), nullable=True)])
+
+    def get_s3(self, hadoop_aws_version= '3.3.4',  s3_bucket='pinterest-data-bucket-0990123', region='us-east-1'):
         self.bucket_name= s3_bucket
         self.aws_id= os.environ.get('AWS_ACCESS_ID')
         self.aws_secret= os.environ.get('AWS_SECRET')
         self.aws_client= boto3.client('s3', aws_access_key_id= self.aws_id, region_name=region,aws_secret_access_key=self.aws_secret)
-        self.schema= StructType([StructField('category', StringType(), nullable=True), StructField('index', StringType(),nullable=True), StructField('unique_id', StringType(), nullable=False), 
-            StructField('title', StringType(), nullable=True), StructField('description', StringType(), nullable=True), StructField('follower_count', StringType(), nullable=True), 
-            StructField('tag_list', StringType(), nullable=True), StructField('is_image_or_video', StringType(), nullable=True), StructField('image_src', StringType(), nullable=True),StructField('downloaded', IntegerType()), StructField('save_location', StringType(), nullable=True)])
-
-    def get_s3(self, hadoop_aws_version= '3.3.4'):
         # Setting configuration parameters for spark session
         self.cfg= (
             pyspark.SparkConf().setMaster(f'local[{multiprocessing.cpu_count()}]')
@@ -64,15 +60,20 @@ class PySparkIntegrations:
         main_df= main_df.withColumn('follower_count', main_df.follower_count.cast('int'))
 
     
-    def get_kafka(self, topic_name='pinterest_topic'):
+    def get_kafka(self, batch=False, topic_name='pinterest_topic'):
         os.environ['PYSPARK_SUBMIT_ARGS'] = '--packages org.apache.spark:spark-sql-kafka-0-10_2.13:3.3.0 pyspark-shell'
         self.cfg= (
             pyspark.SparkConf().setMaster(f'local[1]')
             .setAppName('Kafka_Pinterest')
         )
         self.spark_session= pyspark.sql.SparkSession.builder.config(conf=self.cfg).getOrCreate()
-        kafka_df= self.spark_session.readStream.format('kafka').option('kafka.bootstrap.servers', 'localhost:9092') \
-            .option('startingOffsets', 'earliest').load()
+        if batch==False:
+            kafka_df= self.spark_session.readStream.format('kafka').option('kafka.bootstrap.servers', 'localhost:9092') \
+                .option('subscribe', topic_name).option('kafka.group.id', 'stream_consumer').load()
+        else:
+            kafka_df= self.spark_session.readStream.format('kafka').option('kafka.bootstrap.servers', 'localhost:9092') \
+                .option('startingOffsets', 'earliest').option('endingOffsets', 'latest').option('subscribe', topic_name).option('kafka.group.id', 'batch_consumer').load()
+
         kafka_df= kafka_df.selectExpr('CAST(value AS STRING)')
         kafka_df.writeStream.format('console').outputMode('append').start().awaitTermination()
 

@@ -68,11 +68,11 @@ def process_msg_q(region='us-east-1', json=False):
         if json==False:
         # print('Temporaray Directory Name: ', temp_dir.name)
             with open(f'{temp_dir}/pinterest_{new_uuid}.csv', mode='w') as csv_file:
-                field_names= ['category', 'index', 'unique_id', 'title', 'description', 'follower_count', 'tag_list', 'is_image_or_video', 'image_src', 'downloaded','save_location']
+                field_names= ['category', 'index_1', 'unique_id', 'title', 'description', 'follower_count', 'tag_list', 'is_image_or_video', 'image_src', 'downloaded','save_location']
                 csv_writer= csv.DictWriter(csv_file, fieldnames=field_names)
                 csv_writer.writeheader()
                 for row in temp_ls:
-                    csv_writer.writerow({'category': row['category'], 'unique_id': row['unique_id'], 'title': row['title'], 'description': row['description'], 'follower_count': row['follower_count'], 'tag_list': row['tag_list'], 'is_image_or_video': row['is_image_or_video'], 'downloaded': row['downloaded'], 'save_location': row['save_location']})
+                    csv_writer.writerow({'category': row['category'], 'index_1': row['index_1'],'unique_id': row['unique_id'], 'title': row['title'], 'description': row['description'], 'follower_count': row['follower_count'], 'tag_list': row['tag_list'], 'is_image_or_video': row['is_image_or_video'], 'downloaded': row['downloaded'], 'save_location': row['save_location']})
             aws_client.upload_file(f'{temp_dir}/pinterest_{new_uuid}.csv', 'pinterest-data-bucket-0990123', f'pinterest_{new_uuid}.csv')
         else:
             with open(f'{temp_dir}/pinterest-json-{new_uuid}.json', mode='w') as json_file:
