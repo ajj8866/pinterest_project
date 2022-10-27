@@ -22,3 +22,7 @@ class SparkCassandra(PySparkIntegrations):
         #     set("com.datastax.spark:spark-cassandra-connector_2.12:3.2.0")
         self.cfg= (pyspark.SparkConf().setMaster('local[1]').setAppName('Cassan').set('spark.cassandra.connection.host', 'localhost').set('spark.cassandra.connection.port', '9042'))
         self.spark_session= pyspark.sql.builder.conf(conf= self.cfg).getOrCreate()
+
+if __name__=='__main__':
+    sp_cass= SparkCassandra()
+    sp_cass.cassandra_connect()

@@ -20,7 +20,7 @@ producer= KafkaProducer(bootstrap_servers='localhost:9092', value_serializer=lam
 
 class Data(BaseModel):
     category: str
-    index_1: int
+    index: int
     unique_id: Optional[str]= uuid.uuid4()
     title: str
     description: str
