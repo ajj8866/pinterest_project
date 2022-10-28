@@ -1,4 +1,5 @@
 from matplotlib.font_manager import ttfFontProperty
+from pyrsistent import m
 from pyspark.sql.types import StructField, StringType, IntegerType, StructType
 import multiprocessing
 import pyspark
@@ -14,8 +15,10 @@ import time
 from threading import Event, Thread
 from pathlib import Path
 import tempfile
+import re
 # from User_Emulation.user_posting_emulation import run_infinite_post_data_loop, AWSDBConnector
 import os
+
 
 class PySparkIntegrations:
     '''
@@ -51,6 +54,8 @@ class PySparkIntegrations:
             .setAppName('PinterestApp')
             .set('spark.jars.packages', f'org.apache.hadoop:hadoop-aws:{hadoop_aws_version}')
             .set('spark.jars.packages', f'org.apache.hadoop:hadoop-common:{hadoop_aws_version}')
+            .set('spark.jars.packages', f'org.apache.hadoop:hadoop-client:{hadoop_aws_version}') # TBC
+            .set('spark.hadoop.fs.s3a.aws.credentials.provider', 'org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider')
             )
 
         self.spark_session= pyspark.sql.SparkSession.builder.config(conf=self.cfg).getOrCreate()
@@ -59,27 +64,39 @@ class PySparkIntegrations:
         sc= self.spark_session.sparkContext
         sc._jsc.hadoopConfiguration().set('fs.s3a.access.key', self.aws_id) # 
         sc._jsc.hadoopConfiguration().set('fs.s3a.secret.key', self.aws_secret)
+        # TBC
+        sc._jsc.hadoopConfiguration().set('fs.s3a.path.style.access', 'true')   
+        sc._jsc.hadoopConfiguration().set('fs.s3a.impl', 'org.apache.hadoop.fs.s3a.S3AFileSystem')
+        # sc._jsc.hadoopConfiguration().set('fs.s3a.endpoint', 's3.amazonaws.com')
+
+
+
         main_df= self.spark_session.createDataFrame(sc.parallelize([]), schema=self.schema)
-        counter= 1
 
         # Looping over obects in AWS s3 bucket to read in to Pyspark using temp module
-        for obj in self.aws_client.list_objects_v2(Bucket=self.bucket_name)['Contents']:
-            with tempfile.TemporaryDirectory(dir='.') as temp_dir:
-                counter_z= str(counter).zfill(3)
-                print('Type: ', type(obj['Key']))
-                self.aws_client.download_file(self.bucket_name, obj['Key'], f'{temp_dir}/pinterest_{counter_z}') 
-                print('CWD',Path.cwd())
-                print('listdir', os.listdir())
+        
+        try:
+            for obj in self.aws_client.list_objects_v2(Bucket=self.bucket_name)['Contents']:  
                 # temp_df= self.spark_session.read.csv(f's3a:{self.bucket_name}/{csv_file}', header=True, inferSchema=True)
-                temp_df= self.spark_session.read.csv(f'{temp_dir}/pinterest_{counter_z}' , header=True, inferSchema=True)
+                temp_df= self.spark_session.read.format('csv').option('header', True).schema(self.schema).load(f's3a://{self.bucket_name}/{obj["Key"]}')
                 main_df= main_df.union(temp_df)
                 main_df.show()
                 main_df.cache()
                 time.sleep(2)
-            counter+=1
-            # os.chdir(Path.cwd().parent)
+        except Exception as e:
+            print(e)
+            print('Trying to download on local directory and loading into spark dataframe')
+            csv_holder= 'combined_csvs'
+            counter= 1
+            for obj in self.aws_client.list_objects_v2(Bucket=self.bucket_name)['Contents']:
+                counter_z= str(counter).zfill(2)
+                self.aws_client.download_file(self.bucket_name, obj['Key'], f'pinterest_{counter_z}.csv')
+                temp_df= self.spark_session.read.csv(f'pinterest_{counter_z}.csv', schema= self.schema, header=True)
+                main_df= main_df.union(temp_df)
+                counter+=1
+        
         main_df.show(20, truncate=True)
-        main_df.write.option('header', True).csv('combined_data')
+        # main_df.write.option('header', True).mode('overwrite').csv('combined_data')
         print('#'*20)
         print('Spark Dataframe Before Preprocessing')
         main_df.show(20, truncate=False)
@@ -96,6 +113,10 @@ class PySparkIntegrations:
         print('#'*20)
         print('Spark Dataframe Before Preprocessing')
         main_df.show(20, truncate=False)
+        main_df.write.options(header='True').mode('overwrite').csv('spark_df')
+        for i in os.listdir():
+            if re.findall(r'pinterest_\d{2}.csv', i)!=[]:
+                os.unlink(i)
         return main_df
     
     def get_kafka(self, batch=False, topic_name='pinterest_topic'):
